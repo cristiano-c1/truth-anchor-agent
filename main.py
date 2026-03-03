@@ -140,8 +140,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount MCP SSE server at /mcp
-app.mount("/mcp", mcp.get_application())
+# Mount MCP streamable HTTP server at /mcp
+app.mount("/mcp", mcp.streamable_http_app())
 
 
 @app.get("/")
