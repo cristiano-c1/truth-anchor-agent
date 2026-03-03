@@ -1,42 +1,37 @@
 import requests
 
-# L'URL del tuo agente su Fly.io
 AGENT_URL = "https://truth-anchor-agent.fly.dev/verify"
 
 def run_bot_buyer():
-    print("🤖 [Bot Buyer]: Sto cercando di contattare l'agente Truth Anchor...")
-    
-    # Dati di esempio: chiediamo di verificare l'URL di Google
+    print("🤖 [Bot Buyer]: Contacting Truth Anchor agent...")
+
     payload = {"url": "https://google.com"}
-    
+
     try:
-        # L'agente prova a fare la richiesta senza token di pagamento
         response = requests.post(AGENT_URL, json=payload)
-        
-        # Se il server risponde 402, il protocollo x402 sta funzionando!
+
         if response.status_code == 402:
-            print("✅ [Successo]: L'agente ha richiesto un pagamento (Status 402).")
-            
-            # Estraiamo i dati di pagamento dagli Header
+            print("✅ [Success]: Agent requested payment (Status 402).")
+
             address = response.headers.get("X-Payment-Address")
             amount = response.headers.get("X-Payment-Amount")
             network = response.headers.get("X-Payment-Network")
-            
-            print(f"\n--- FATTURA RICEVUTA ---")
-            print(f"📍 Invia a: {address}")
-            print(f"💰 Importo: {amount} USDC")
-            print(f"🌐 Rete:    {network.upper()}")
+
+            print(f"\n--- INVOICE RECEIVED ---")
+            print(f"📍 Send to: {address}")
+            print(f"💰 Amount:  {amount} USDC")
+            print(f"🌐 Network: {network.upper()}")
             print(f"------------------------\n")
-            
-            print("💡 Ora invia manualmente i fondi dal tuo Trust Wallet.")
-            print("Appena la transazione è confermata, l'ora di lavoro sarà ufficialmente 'ripagata'!")
-            
+
+            print("💡 Send the funds manually from your wallet.")
+            print("Once the transaction is confirmed, pass the tx hash as X-402-Payment-Token.")
+
         else:
-            print(f"⚠️ Errore: Il server ha risposto con status {response.status_code}")
-            print("Controlla che il deploy su Fly.io sia andato a buon fine.")
+            print(f"⚠️ Unexpected status: {response.status_code}")
+            print("Check that the Fly.io deploy is healthy.")
 
     except Exception as e:
-        print(f"❌ Errore di connessione: {e}")
+        print(f"❌ Connection error: {e}")
 
 if __name__ == "__main__":
     run_bot_buyer()

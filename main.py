@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, Response
 from dotenv import load_dotenv
 from web3 import Web3
 
-# Carica le variabili d'ambiente dal file .env
+# Load environment variables from .env
 load_dotenv()
 
 app = FastAPI(title="Truth Anchor Agent")
@@ -89,7 +89,7 @@ def verify_payment(tx_hash: str) -> bool:
 
 @app.get("/")
 async def health_check():
-    """Verifica che l'agente sia online."""
+    """Check that the agent is online."""
     return {
         "status": "online",
         "agent": "Truth Anchor",
@@ -99,11 +99,11 @@ async def health_check():
 
 @app.get("/mcp.json")
 async def get_mcp_config():
-    """Manifesto per i Marketplace di Agenti AI (Model Context Protocol)."""
+    """Manifest for AI Agent Marketplaces (Model Context Protocol)."""
     return {
         "mcp_version": "2026.1",
         "name": "Truth-Anchor-Agent",
-        "description": "Verifica in tempo reale se un URL è attivo per prevenire allucinazioni nelle AI.",
+        "description": "Real-time URL verification to prevent AI hallucinations.",
         "capabilities": {
             "url_verification": {
                 "pricing": "0.005 USDC",
@@ -119,8 +119,8 @@ async def get_mcp_config():
 @app.post("/verify")
 async def verify_link(request: Request):
     """
-    Endpoint principale con protocollo x402.
-    Richiede un pagamento di 0.005 USDC su rete Base.
+    Main endpoint with x402 payment protocol.
+    Requires a payment of 0.005 USDC on Base.
     """
     payment_token = request.headers.get("X-402-Payment-Token")
 
@@ -142,7 +142,7 @@ async def verify_link(request: Request):
             media_type="application/json"
         )
 
-    # Logica di business: eseguita solo dopo il pagamento verificato on-chain
+    # Business logic: executed only after on-chain payment is verified
     try:
         data = await request.json()
         url = data.get("url")

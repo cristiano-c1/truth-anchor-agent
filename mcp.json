@@ -1,7 +1,7 @@
 {
     "mcp_version": "2026.1",
     "name": "Truth Anchor Agent",
-    "description": "Verifica in tempo reale se un URL è attivo e sicuro per prevenire allucinazioni AI.",
+    "description": "Real-time URL verification to prevent AI hallucinations.",
     "category": "Utilities",
     "capabilities": {
       "url_verification": {
