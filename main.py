@@ -120,15 +120,23 @@ def verify_url(url: str, tx_hash: str = "") -> dict:
         }
 
     try:
-        r = requests.head(url, timeout=5)
+        r = requests.get(url, timeout=10, allow_redirects=True, verify=True)
+        final_url = r.url
+        redirected = final_url.rstrip("/") != url.rstrip("/")
+        ssl_valid = url.startswith("https://")
         return {
             "url": url,
+            "final_url": final_url,
             "is_live": 200 <= r.status_code < 400,
             "status_code": r.status_code,
+            "redirected": redirected,
+            "ssl_valid": ssl_valid,
             "payment_verified": True
         }
+    except requests.exceptions.SSLError:
+        return {"url": url, "is_live": False, "ssl_valid": False, "error": "SSL certificate invalid"}
     except Exception as e:
-        return {"is_live": False, "error": str(e)}
+        return {"url": url, "is_live": False, "error": str(e)}
 
 
 # --- FastAPI app ---
@@ -216,15 +224,22 @@ async def verify_link(request: Request):
         if not url:
             return {"error": "URL missing"}, 400
 
-        r = requests.head(url, timeout=5)
+        r = requests.get(url, timeout=10, allow_redirects=True, verify=True)
+        final_url = r.url
+        redirected = final_url.rstrip("/") != url.rstrip("/")
         return {
             "url": url,
+            "final_url": final_url,
             "is_live": 200 <= r.status_code < 400,
             "status_code": r.status_code,
+            "redirected": redirected,
+            "ssl_valid": url.startswith("https://"),
             "payment_received": True
         }
+    except requests.exceptions.SSLError:
+        return {"url": url, "is_live": False, "ssl_valid": False, "error": "SSL certificate invalid"}
     except Exception as e:
-        return {"is_live": False, "error": str(e)}
+        return {"url": url, "is_live": False, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
