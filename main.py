@@ -85,10 +85,7 @@ def verify_payment(tx_hash: str) -> bool:
 
 
 # --- MCP Server ---
-mcp = FastMCP(
-    "Truth Anchor Agent",
-    description="Real-time URL verification to prevent AI hallucinations. Requires 0.005 USDC on Base via x402."
-)
+mcp = FastMCP("Truth Anchor Agent")
 
 @mcp.tool()
 def verify_url(url: str, tx_hash: str = "") -> dict:
