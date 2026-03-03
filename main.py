@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import requests
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -131,7 +132,15 @@ def verify_url(url: str, tx_hash: str = "") -> dict:
 
 
 # --- FastAPI app ---
-app = FastAPI(title="Truth Anchor Agent", lifespan=mcp.lifespan)
+# Initialize MCP ASGI app first so session_manager is created
+_mcp_asgi = mcp.streamable_http_app()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with mcp.session_manager.run():
+        yield
+
+app = FastAPI(title="Truth Anchor Agent", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -141,8 +150,7 @@ app.add_middleware(
 )
 
 # Mount MCP streamable HTTP server at /mcp
-# The inner app responds at /mcp, so full path is /mcp/mcp
-app.mount("/mcp", mcp.streamable_http_app())
+app.mount("/mcp", _mcp_asgi)
 
 
 @app.get("/")
