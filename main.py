@@ -2,6 +2,7 @@ import os
 import sqlite3
 import requests
 from contextlib import asynccontextmanager
+from html.parser import HTMLParser
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -19,6 +20,33 @@ TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 BASE_RPC = os.getenv("BASE_RPC_URL", "https://mainnet.base.org")
 
 w3 = Web3(Web3.HTTPProvider(BASE_RPC))
+
+
+# --- HTML meta parser ---
+class MetaParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title = ""
+        self.description = ""
+        self._in_title = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "title":
+            self._in_title = True
+        if tag == "meta":
+            attrs = dict(attrs)
+            name = attrs.get("name", "").lower()
+            prop = attrs.get("property", "").lower()
+            if name == "description" or prop == "og:description":
+                self.description = attrs.get("content", "")
+
+    def handle_data(self, data):
+        if self._in_title:
+            self.title += data
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
 
 # --- SQLite setup ---
 DB_PATH = "/data/payments.db"
@@ -89,9 +117,9 @@ def verify_payment(tx_hash: str) -> bool:
 mcp = FastMCP("Truth Anchor Agent", host="0.0.0.0")
 
 @mcp.tool()
-def verify_url(url: str, tx_hash: str = "") -> dict:
+def verify_url(url: str, tx_hash: str = "", claim: str = "") -> dict:
     """
-    Verify if a URL is live and accessible.
+    Verify if a URL is live, accessible, and optionally contains a specific claim.
 
     Requires a 0.005 USDC payment on Base blockchain.
     If tx_hash is empty, returns payment instructions.
@@ -100,6 +128,7 @@ def verify_url(url: str, tx_hash: str = "") -> dict:
     Args:
         url: The URL to verify (e.g. https://example.com)
         tx_hash: Transaction hash of the 0.005 USDC payment on Base
+        claim: Optional text to check for in the page content (e.g. "climate change")
     """
     wallet = os.getenv("MY_WALLET_ADDRESS", "")
 
@@ -124,15 +153,26 @@ def verify_url(url: str, tx_hash: str = "") -> dict:
         final_url = r.url
         redirected = final_url.rstrip("/") != url.rstrip("/")
         ssl_valid = url.startswith("https://")
-        return {
+
+        parser = MetaParser()
+        parser.feed(r.text[:50000])
+
+        result = {
             "url": url,
             "final_url": final_url,
             "is_live": 200 <= r.status_code < 400,
             "status_code": r.status_code,
             "redirected": redirected,
             "ssl_valid": ssl_valid,
+            "title": parser.title.strip(),
+            "description": parser.description.strip(),
             "payment_verified": True
         }
+
+        if claim:
+            result["claim_found"] = claim.lower() in r.text.lower()
+
+        return result
     except requests.exceptions.SSLError:
         return {"url": url, "is_live": False, "ssl_valid": False, "error": "SSL certificate invalid"}
     except Exception as e:
