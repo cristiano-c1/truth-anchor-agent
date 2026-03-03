@@ -2,6 +2,7 @@ import os
 import sqlite3
 import requests
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from web3 import Web3
 
@@ -9,6 +10,13 @@ from web3 import Web3
 load_dotenv()
 
 app = FastAPI(title="Truth Anchor Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Constants ---
 USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
