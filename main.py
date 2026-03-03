@@ -131,7 +131,7 @@ def verify_url(url: str, tx_hash: str = "") -> dict:
 
 
 # --- FastAPI app ---
-app = FastAPI(title="Truth Anchor Agent")
+app = FastAPI(title="Truth Anchor Agent", lifespan=mcp.lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -141,6 +141,7 @@ app.add_middleware(
 )
 
 # Mount MCP streamable HTTP server at /mcp
+# The inner app responds at /mcp, so full path is /mcp/mcp
 app.mount("/mcp", mcp.streamable_http_app())
 
 
