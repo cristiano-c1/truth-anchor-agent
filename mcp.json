@@ -1,0 +1,16 @@
+{
+    "mcp_version": "2026.1",
+    "name": "Truth Anchor Agent",
+    "description": "Verifica in tempo reale se un URL è attivo e sicuro per prevenire allucinazioni AI.",
+    "category": "Utilities",
+    "capabilities": {
+      "url_verification": {
+        "pricing": "0.005 USDC",
+        "network": "base",
+        "wallet": "0x367B9193D4F9cb4877Ca58E6F3ce944d761d8009"
+      }
+    },
+    "endpoints": {
+      "verify": "https://truth-anchor-agent.fly.dev/verify"
+    }
+  }
