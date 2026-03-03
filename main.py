@@ -86,7 +86,7 @@ def verify_payment(tx_hash: str) -> bool:
 
 
 # --- MCP Server ---
-mcp = FastMCP("Truth Anchor Agent")
+mcp = FastMCP("Truth Anchor Agent", host="0.0.0.0")
 
 @mcp.tool()
 def verify_url(url: str, tx_hash: str = "") -> dict:
