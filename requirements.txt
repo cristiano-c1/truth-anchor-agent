@@ -3,4 +3,5 @@ uvicorn
 requests
 python-dotenv
 web3
+eth-abi
 mcp[cli]
