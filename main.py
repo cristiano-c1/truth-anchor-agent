@@ -5,18 +5,10 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from web3 import Web3
+from mcp.server.fastmcp import FastMCP
 
 # Load environment variables from .env
 load_dotenv()
-
-app = FastAPI(title="Truth Anchor Agent")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # --- Constants ---
 USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
@@ -57,7 +49,6 @@ def verify_payment(tx_hash: str) -> bool:
     if receipt is None or receipt.get("status") != 1:
         return False
 
-    # Check for a USDC Transfer log to our wallet with sufficient amount
     usdc = USDC_CONTRACT.lower()
     found = False
     for log in receipt.get("logs", []):
@@ -68,7 +59,6 @@ def verify_payment(tx_hash: str) -> bool:
             continue
         if topics[0].hex() != TRANSFER_TOPIC:
             continue
-        # topics[2] is the 'to' address (padded to 32 bytes)
         to_addr = "0x" + topics[2].hex()[-40:]
         if to_addr.lower() != wallet:
             continue
@@ -80,7 +70,6 @@ def verify_payment(tx_hash: str) -> bool:
     if not found:
         return False
 
-    # Replay prevention
     con = sqlite3.connect(DB_PATH)
     row = con.execute(
         "SELECT 1 FROM used_payments WHERE tx_hash = ?", (tx_hash,)
@@ -95,6 +84,69 @@ def verify_payment(tx_hash: str) -> bool:
     return True
 
 
+# --- MCP Server ---
+mcp = FastMCP(
+    "Truth Anchor Agent",
+    description="Real-time URL verification to prevent AI hallucinations. Requires 0.005 USDC on Base via x402."
+)
+
+@mcp.tool()
+def verify_url(url: str, tx_hash: str = "") -> dict:
+    """
+    Verify if a URL is live and accessible.
+
+    Requires a 0.005 USDC payment on Base blockchain.
+    If tx_hash is empty, returns payment instructions.
+    After sending USDC, call again with the transaction hash.
+
+    Args:
+        url: The URL to verify (e.g. https://example.com)
+        tx_hash: Transaction hash of the 0.005 USDC payment on Base
+    """
+    wallet = os.getenv("MY_WALLET_ADDRESS", "")
+
+    if not tx_hash:
+        return {
+            "payment_required": True,
+            "amount": "0.005 USDC",
+            "network": "base",
+            "wallet_address": wallet,
+            "instructions": f"Send 0.005 USDC to {wallet} on Base, then call this tool again with the transaction hash as tx_hash."
+        }
+
+    if not verify_payment(tx_hash):
+        return {
+            "error": "Payment not verified",
+            "payment_required": True,
+            "wallet_address": wallet,
+        }
+
+    try:
+        r = requests.head(url, timeout=5)
+        return {
+            "url": url,
+            "is_live": 200 <= r.status_code < 400,
+            "status_code": r.status_code,
+            "payment_verified": True
+        }
+    except Exception as e:
+        return {"is_live": False, "error": str(e)}
+
+
+# --- FastAPI app ---
+app = FastAPI(title="Truth Anchor Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount MCP SSE server at /mcp
+app.mount("/mcp", mcp.get_application())
+
+
 @app.get("/")
 async def health_check():
     """Check that the agent is online."""
@@ -102,7 +154,8 @@ async def health_check():
         "status": "online",
         "agent": "Truth Anchor",
         "version": "1.0.0",
-        "payment_network": "base"
+        "payment_network": "base",
+        "mcp_endpoint": "https://truth-anchor-agent.fly.dev/mcp"
     }
 
 @app.get("/mcp.json")
@@ -120,7 +173,8 @@ async def get_mcp_config():
             }
         },
         "endpoints": {
-            "verify": "https://truth-anchor-agent.fly.dev/verify"
+            "verify": "https://truth-anchor-agent.fly.dev/verify",
+            "mcp": "https://truth-anchor-agent.fly.dev/mcp"
         }
     }
 
@@ -150,7 +204,6 @@ async def verify_link(request: Request):
             media_type="application/json"
         )
 
-    # Business logic: executed only after on-chain payment is verified
     try:
         data = await request.json()
         url = data.get("url")

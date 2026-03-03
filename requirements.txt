@@ -3,3 +3,4 @@ uvicorn
 requests
 python-dotenv
 web3
+mcp[cli]
