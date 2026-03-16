@@ -381,11 +381,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount MCP streamable HTTP server — FastMCP registers routes at /mcp internally,
-# so we mount at / and let FastAPI route decorators take priority over the catch-all.
-app.mount("/", _mcp_asgi)
-
-
 @app.get("/")
 async def health_check():
     """Check that the agent is online."""
@@ -532,6 +527,10 @@ async def verify_link(request: Request):
         return {"url": url, "is_live": False, "ssl_valid": False, "error": "SSL certificate invalid"}
     except Exception as e:
         return {"url": url, "is_live": False, "error": str(e)}
+
+# Mount FastMCP at / AFTER all routes so FastAPI routes take priority.
+# FastMCP registers its routes at /mcp internally, so it correctly handles /mcp requests.
+app.mount("/", _mcp_asgi)
 
 if __name__ == "__main__":
     import uvicorn
