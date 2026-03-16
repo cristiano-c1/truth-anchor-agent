@@ -10,6 +10,10 @@
 > **The Problem:** AI agents often reference dead links or hallucinate sources.
 > **The Solution:** A trustless, pay-per-verification service that requires agents to commit a micro-payment before confirming a source's validity.
 
+<a href="https://glama.ai/mcp/servers/cristiano-c1/truth-anchor-agent">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/cristiano-c1/truth-anchor-agent/badge" alt="truth-anchor-agent MCP server" />
+</a>
+
 ---
 
 ## 🛠 Model Context Protocol (MCP) Integration
