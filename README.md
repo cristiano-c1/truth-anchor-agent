@@ -5,10 +5,10 @@
 [![MCP](https://img.shields.io/badge/MCP-Protocol-green)](https://modelcontextprotocol.io)
 [![x402](https://img.shields.io/badge/Payment-x402-blueviolet)](https://x402.org)
 
-**Truth Anchor Agent** is an MCP (Model Context Protocol) server that provides a verifiable grounding layer for AI agents. It verifies URL status and content accessibility, gated by **on-chain USDC micro-payments** on Base via the **x402 protocol**.
+**Truth Anchor Agent** is an MCP (Model Context Protocol) server for **citation attestation**. Before an agent cites a source, it can verify that the URL resolves, record the final destination, capture lightweight page metadata, and return a content hash of what was fetched.
 
-> **The Problem:** AI agents often reference dead links or hallucinate sources.
-> **The Solution:** A trustless, pay-per-verification service that requires agents to commit a micro-payment before confirming a source's validity.
+> **The Problem:** AI agents often cite dead, redirected, or changed URLs without checking what the source looked like at the time of use.
+> **The Solution:** A paid verification step that records source availability and lightweight attestation metadata before the agent relies on a citation.
 
 <a href="https://glama.ai/mcp/servers/cristiano-c1/truth-anchor-agent">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/cristiano-c1/truth-anchor-agent/badge" alt="truth-anchor-agent MCP server" />
@@ -16,9 +16,24 @@
 
 ---
 
+## What It Guarantees
+
+- The URL was fetched at verification time.
+- The service reports the final URL, HTTP status, redirect behavior, and basic HTML metadata.
+- The response includes a `content_sha256` hash so downstream systems can anchor what was observed.
+- Optional claim matching is a simple substring check.
+
+## What It Does Not Guarantee
+
+- It is **not** a semantic fact-checking engine.
+- It does **not** prove a page is trustworthy, only what the service observed when it fetched it.
+- It does **not** replace search, RAG, or human review for complex claims.
+
+---
+
 ## 🛠 Model Context Protocol (MCP) Integration
 
-This server exposes a `verify` tool that any MCP-compliant LLM (Claude Desktop, ChatGPT, IDEs) can use autonomously.
+This server exposes a `verify_url` tool that any MCP-compliant LLM (Claude Desktop, ChatGPT, IDEs) can use autonomously.
 
 ### Registration in Claude Desktop
 Add this to your `claude_desktop_config.json`:
@@ -39,40 +54,80 @@ Add this to your `claude_desktop_config.json`:
 
 ---
 
-## 💳 The x402 Flow
+## Interfaces
 
-The agent implements the HTTP 402 Payment Required standard, enabling seamless AI-to-AI economic transactions.
+### MCP tool
+
+The MCP tool uses a two-step flow:
+
+1. Call `verify_url` with a URL.
+2. Receive payment instructions if no payment proof is provided.
+3. Retry with `tx_hash` after sending the payment.
+
+### HTTP API
+
+The HTTP API uses an API key plus x402-style signed payments:
+
+1. `POST /auth/provision` to get a free API key.
+2. Use the first 50 requests for free.
+3. After that, attach `X-Payment` to `POST /verify`.
+
+---
+
+## 💳 The Payment Flow
+
+The HTTP API implements a `402 Payment Required` flow for paid requests after the free tier is exhausted.
 
 1. **Request:** Agent calls `/verify` with a URL.
 2. **Challenge:** Server returns `402 Payment Required` with payment instructions.
-3. **Payment:** Agent executes a 0.005 USDC transfer on Base Mainnet.
-4. **Verification:** Agent retries with the transaction hash in the `X-402-Payment-Token` header.
-5. **Truth:** Server validates the hash on-chain (preventing replays) and returns the status.
+3. **Payment:** Agent signs a Base USDC payment authorization.
+4. **Verification:** Agent retries with the `X-Payment` header.
+5. **Attestation:** Server verifies the payment and returns the source check.
 
 ---
 
 ## ⚡️ API Reference
 
 ### `POST /verify`
-Verifies a URL's status. Requires a valid Base transaction hash.
+Verifies that a source resolves and returns attestation metadata. Requires:
+
+- `Authorization: Bearer <api_key>`
+- `X-Payment` after the free tier is exhausted
 
 **Headers:**
 | Header | Description |
 | :--- | :--- |
-| `X-402-Payment-Token` | The transaction hash of the 0.005 USDC payment on Base |
+| `Authorization` | API key returned by `POST /auth/provision` |
+| `X-Payment` | Signed x402/EIP-3009 payment payload after the free tier |
 
 **Request Body:**
 ```json
-{ "url": "https://base.org" }
+{
+  "url": "https://base.org",
+  "claim": "Base is an Ethereum L2"
+}
 ```
 
 **Success Response (`200 OK`):**
 ```json
 {
   "url": "https://base.org",
+  "final_url": "https://base.org/",
   "is_live": true,
   "status_code": 200,
-  "payment_verified": true
+  "redirected": false,
+  "ssl_valid": true,
+  "checked_at": "2026-04-02T12:00:00Z",
+  "content_type": "text/html",
+  "content_length_bytes": 31245,
+  "title": "Base",
+  "description": "Base is a secure, low-cost, builder-friendly Ethereum L2.",
+  "content_sha256": "9d72c4...",
+  "claim": "Base is an Ethereum L2",
+  "claim_found": true,
+  "claim_match_method": "substring",
+  "paid": false,
+  "free_requests_remaining": 49
 }
 ```
 
@@ -85,6 +140,14 @@ Verifies a URL's status. Requires a valid Base transaction hash.
 - **SQLite** — Replay attack prevention and transaction indexing.
 - **Fly.io** — Global edge deployment.
 - **Base** — L2 Ethereum for fast, low-cost USDC payments.
+
+---
+
+## Positioning Notes
+
+- Primary wedge: `citation attestation for agents`
+- Rejected for now: broad `truth layer`, general fact-checking, and multi-tool expansion
+- Product gap and validation notes live in `docs/product-positioning.md`, `docs/user-validation.md`, and `docs/user-validation-proxy.md`
 
 ---
 

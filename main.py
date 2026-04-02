@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import os
 import secrets
@@ -286,7 +287,7 @@ def _payment_required_body(resource_url: str) -> dict:
             "network": "base",
             "maxAmountRequired": str(MIN_AMOUNT),
             "resource": resource_url,
-            "description": "URL verification - 0.005 USDC on Base",
+            "description": "Citation attestation - 0.005 USDC on Base",
             "mimeType": "application/json",
             "payTo": wallet,
             "maxTimeoutSeconds": 300,
@@ -297,13 +298,52 @@ def _payment_required_body(resource_url: str) -> dict:
     }
 
 
+def _checked_at_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def inspect_url(url: str, claim: str = "") -> dict:
+    """Fetch a URL once and return lightweight attestation metadata."""
+    r = requests.get(url, timeout=10, allow_redirects=True, verify=True)
+    final_url = r.url
+    redirected = final_url.rstrip("/") != url.rstrip("/")
+    ssl_valid = url.startswith("https://")
+    content_type = r.headers.get("content-type", "").split(";", 1)[0].strip()
+    body_text = r.text
+
+    parser = MetaParser()
+    parser.feed(body_text[:50000])
+
+    result = {
+        "url": url,
+        "final_url": final_url,
+        "is_live": 200 <= r.status_code < 400,
+        "status_code": r.status_code,
+        "redirected": redirected,
+        "ssl_valid": ssl_valid,
+        "checked_at": _checked_at_iso(),
+        "content_type": content_type,
+        "content_length_bytes": len(r.content),
+        "title": parser.title.strip(),
+        "description": parser.description.strip(),
+        "content_sha256": hashlib.sha256(r.content).hexdigest(),
+    }
+
+    if claim:
+        result["claim"] = claim
+        result["claim_found"] = claim.lower() in body_text.lower()
+        result["claim_match_method"] = "substring"
+
+    return result
+
+
 # --- MCP Server ---
 mcp = FastMCP("Truth Anchor Agent", host="0.0.0.0")
 
 @mcp.tool()
 def verify_url(url: str, tx_hash: str = "", claim: str = "") -> dict:
     """
-    Verify if a URL is live, accessible, and optionally contains a specific claim.
+    Check whether a source resolves and return attestation metadata for citations.
 
     Requires a 0.005 USDC payment on Base blockchain.
     If tx_hash is empty, returns payment instructions.
@@ -333,29 +373,8 @@ def verify_url(url: str, tx_hash: str = "", claim: str = "") -> dict:
         }
 
     try:
-        r = requests.get(url, timeout=10, allow_redirects=True, verify=True)
-        final_url = r.url
-        redirected = final_url.rstrip("/") != url.rstrip("/")
-        ssl_valid = url.startswith("https://")
-
-        parser = MetaParser()
-        parser.feed(r.text[:50000])
-
-        result = {
-            "url": url,
-            "final_url": final_url,
-            "is_live": 200 <= r.status_code < 400,
-            "status_code": r.status_code,
-            "redirected": redirected,
-            "ssl_valid": ssl_valid,
-            "title": parser.title.strip(),
-            "description": parser.description.strip(),
-            "payment_verified": True
-        }
-
-        if claim:
-            result["claim_found"] = claim.lower() in r.text.lower()
-
+        result = inspect_url(url, claim)
+        result["payment_verified"] = True
         return result
     except requests.exceptions.SSLError:
         return {"url": url, "is_live": False, "ssl_valid": False, "error": "SSL certificate invalid"}
@@ -398,12 +417,13 @@ async def get_mcp_config():
     return {
         "mcp_version": "2026.1",
         "name": "Truth-Anchor-Agent",
-        "description": "Real-time URL verification to prevent AI hallucinations.",
+        "description": "Citation attestation for agents: verify a source resolves, where it redirects, and what content hash was observed.",
         "capabilities": {
-            "url_verification": {
+            "source_attestation": {
                 "pricing": "0.005 USDC",
                 "network": "base",
-                "address": os.getenv("MY_WALLET_ADDRESS")
+                "address": os.getenv("MY_WALLET_ADDRESS"),
+                "returns": ["status_code", "final_url", "content_sha256", "claim_found"],
             }
         },
         "endpoints": {
@@ -447,12 +467,17 @@ async def revenue():
 @app.post("/verify")
 async def verify_link(request: Request):
     """
-    URL verification.
+    Citation attestation over HTTP.
 
     Flow:
       1. GET /auth/provision → ricevi api_key (prime 50 gratis)
       2. POST /verify con header Authorization: Bearer <api_key>
       3. Dopo 50 richieste: aggiungi X-Payment (EIP-3009 firmato) per pagare 0.005 USDC
+
+    Guarantees:
+      - The URL was fetched at the reported time
+      - The service reports redirect target, status code, and content hash
+      - Optional claim matching is a substring check, not semantic fact-checking
     """
     # --- Verifica API key ---
     auth_header = request.headers.get("Authorization", "")
@@ -507,19 +532,13 @@ async def verify_link(request: Request):
     try:
         data = await request.json()
         url = data.get("url")
+        claim = data.get("claim", "")
         if not url:
             return Response(status_code=400, content='{"error":"url field required"}', media_type="application/json")
 
-        r = requests.get(url, timeout=10, allow_redirects=True, verify=True)
-        final_url = r.url
-        redirected = final_url.rstrip("/") != url.rstrip("/")
+        result = inspect_url(url, claim)
         return {
-            "url": url,
-            "final_url": final_url,
-            "is_live": 200 <= r.status_code < 400,
-            "status_code": r.status_code,
-            "redirected": redirected,
-            "ssl_valid": url.startswith("https://"),
+            **result,
             "free_requests_remaining": max(0, key_info["free_remaining"] - (0 if paid else 1)),
             "paid": paid,
         }
